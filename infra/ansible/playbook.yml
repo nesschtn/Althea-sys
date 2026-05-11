@@ -1,0 +1,8 @@
+---
+- name: Configure Althea Systems CI/CD agent
+  hosts: agents
+  become: true
+  gather_facts: true
+
+  roles:
+    - agent

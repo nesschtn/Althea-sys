@@ -1,0 +1,319 @@
+# =============================================================================
+# Pipeline Azure DevOps - Althea-sys (DEV)
+# Stages : Validate -> Security Scan -> Plan -> Apply -> Configure (Ansible) -> Smoke Test
+# Sources : repo mirroré depuis GitHub (GitHub = source de vérité)
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - terraform/**
+      - ansible/**
+      - azure-pipelines.yml
+
+# Pas de PR trigger ici (les PRs vivent côté GitHub) : on déclenche uniquement
+# sur les commits mirrorés vers Azure DevOps.
+pr: none
+
+variables:
+  # --- Terraform ---
+  TF_VERSION: '1.9.5'
+  TF_WORKING_DIR: '$(System.DefaultWorkingDirectory)/terraform'
+  TF_BACKEND_RG: 'rg-tfstate-althea'           # à créer côté Azure une seule fois
+  TF_BACKEND_SA: 'satfstatealthea$(System.TeamProjectId)' # nom unique
+  TF_BACKEND_CONTAINER: 'tfstate'
+  TF_BACKEND_KEY: 'althea-sys/dev.tfstate'
+
+  # --- Ansible ---
+  ANSIBLE_WORKING_DIR: '$(System.DefaultWorkingDirectory)/ansible'
+
+  # --- Connexion Azure (à créer côté Project Settings -> Service connections) ---
+  AZURE_SERVICE_CONNECTION: 'sc-azure-dev'
+
+  # --- Environnement Azure DevOps (pour approbation manuelle avant apply) ---
+  ENV_NAME: 'dev'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+# =============================================================================
+# STAGE 1 - VALIDATE : fmt + validate Terraform + lint Ansible
+# =============================================================================
+- stage: Validate
+  displayName: 'Validate IaC & playbooks'
+  jobs:
+    - job: TerraformValidate
+      displayName: 'Terraform fmt & validate'
+      steps:
+        - task: TerraformInstaller@1
+          displayName: 'Install Terraform $(TF_VERSION)'
+          inputs:
+            terraformVersion: '$(TF_VERSION)'
+
+        - script: |
+            terraform fmt -check -recursive
+          displayName: 'terraform fmt -check'
+          workingDirectory: '$(TF_WORKING_DIR)'
+
+        - script: |
+            terraform init -backend=false
+            terraform validate
+          displayName: 'terraform validate'
+          workingDirectory: '$(TF_WORKING_DIR)'
+
+    - job: AnsibleLint
+      displayName: 'Ansible lint'
+      steps:
+        - script: |
+            pip install --quiet ansible-lint ansible
+            ansible-lint || true   # non bloquant en dev, à passer bloquant plus tard
+          displayName: 'Run ansible-lint'
+          workingDirectory: '$(ANSIBLE_WORKING_DIR)'
+
+# =============================================================================
+# STAGE 2 - SECURITY SCAN : tfsec (IaC) - scan d'image laissé pour quand build
+# =============================================================================
+- stage: SecurityScan
+  displayName: 'Security scans (DevSecOps)'
+  dependsOn: Validate
+  condition: succeeded()
+  jobs:
+    - job: TfsecScan
+      displayName: 'tfsec - scan Terraform'
+      steps:
+        - script: |
+            curl -sSL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+            tfsec $(TF_WORKING_DIR) --format default --soft-fail
+          displayName: 'tfsec scan'
+          # --soft-fail : on log les findings sans casser le pipeline en dev.
+          # À retirer pour rendre bloquant en staging/prod.
+
+        - script: |
+            tfsec $(TF_WORKING_DIR) --format junit --out $(System.DefaultWorkingDirectory)/tfsec-report.xml --soft-fail
+          displayName: 'tfsec - rapport JUnit'
+
+        - task: PublishTestResults@2
+          displayName: 'Publier le rapport tfsec'
+          condition: always()
+          inputs:
+            testResultsFormat: 'JUnit'
+            testResultsFiles: '$(System.DefaultWorkingDirectory)/tfsec-report.xml'
+            testRunTitle: 'tfsec'
+            failTaskOnFailedTests: false
+
+# =============================================================================
+# STAGE 3 - PLAN : terraform plan -> artefact pour l'étape Apply
+# =============================================================================
+- stage: Plan
+  displayName: 'Terraform plan'
+  dependsOn: SecurityScan
+  condition: succeeded()
+  jobs:
+    - job: TerraformPlan
+      displayName: 'terraform plan'
+      steps:
+        - task: TerraformInstaller@1
+          inputs:
+            terraformVersion: '$(TF_VERSION)'
+
+        - task: AzureCLI@2
+          displayName: 'terraform init (backend Azure Storage)'
+          inputs:
+            azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            workingDirectory: '$(TF_WORKING_DIR)'
+            inlineScript: |
+              export ARM_CLIENT_ID="$servicePrincipalId"
+              export ARM_OIDC_TOKEN="$idToken"
+              export ARM_TENANT_ID="$tenantId"
+              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+              export ARM_USE_OIDC=true
+
+              terraform init \
+                -backend-config="resource_group_name=$(TF_BACKEND_RG)" \
+                -backend-config="storage_account_name=$(TF_BACKEND_SA)" \
+                -backend-config="container_name=$(TF_BACKEND_CONTAINER)" \
+                -backend-config="key=$(TF_BACKEND_KEY)"
+            addSpnToEnvironment: true
+
+        - task: AzureCLI@2
+          displayName: 'terraform plan'
+          inputs:
+            azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            workingDirectory: '$(TF_WORKING_DIR)'
+            inlineScript: |
+              export ARM_CLIENT_ID="$servicePrincipalId"
+              export ARM_OIDC_TOKEN="$idToken"
+              export ARM_TENANT_ID="$tenantId"
+              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+              export ARM_USE_OIDC=true
+
+              terraform plan \
+                -var="ssh_public_key=$(SSH_PUBLIC_KEY)" \
+                -out=tfplan
+            addSpnToEnvironment: true
+
+        - publish: '$(TF_WORKING_DIR)/tfplan'
+          artifact: tfplan
+          displayName: 'Publier le plan en artefact'
+
+        - publish: '$(TF_WORKING_DIR)'
+          artifact: terraform-workspace
+          displayName: 'Publier le workspace Terraform'
+
+# =============================================================================
+# STAGE 4 - APPLY : nécessite approbation manuelle via l'environnement
+# =============================================================================
+- stage: Apply
+  displayName: 'Terraform apply'
+  dependsOn: Plan
+  condition: succeeded()
+  jobs:
+    - deployment: TerraformApply
+      displayName: 'terraform apply'
+      environment: '$(ENV_NAME)'   # configure les approbations manuelles ici
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: TerraformInstaller@1
+                inputs:
+                  terraformVersion: '$(TF_VERSION)'
+
+              - download: current
+                artifact: terraform-workspace
+
+              - task: AzureCLI@2
+                displayName: 'terraform apply'
+                inputs:
+                  azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  workingDirectory: '$(Pipeline.Workspace)/terraform-workspace'
+                  inlineScript: |
+                    export ARM_CLIENT_ID="$servicePrincipalId"
+                    export ARM_OIDC_TOKEN="$idToken"
+                    export ARM_TENANT_ID="$tenantId"
+                    export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                    export ARM_USE_OIDC=true
+
+                    terraform apply -auto-approve tfplan
+
+                    # On exporte les outputs pour les étapes suivantes
+                    terraform output -json > $(Pipeline.Workspace)/tf-outputs.json
+
+                    PUBLIC_IP=$(terraform output -raw public_ip)
+                    FQDN=$(terraform output -raw fqdn)
+                    URL=$(terraform output -raw url)
+
+                    echo "##vso[task.setvariable variable=PUBLIC_IP;isOutput=true]$PUBLIC_IP"
+                    echo "##vso[task.setvariable variable=FQDN;isOutput=true]$FQDN"
+                    echo "##vso[task.setvariable variable=URL;isOutput=true]$URL"
+                  addSpnToEnvironment: true
+                name: tfApply
+
+              - publish: '$(Pipeline.Workspace)/tf-outputs.json'
+                artifact: tf-outputs
+                displayName: 'Publier les outputs Terraform'
+
+# =============================================================================
+# STAGE 5 - CONFIGURE : Ansible sur la VM provisionnée
+# =============================================================================
+- stage: Configure
+  displayName: 'Ansible configuration'
+  dependsOn: Apply
+  condition: succeeded()
+  variables:
+    PUBLIC_IP: $[ stageDependencies.Apply.TerraformApply.outputs['TerraformApply.tfApply.PUBLIC_IP'] ]
+    FQDN: $[ stageDependencies.Apply.TerraformApply.outputs['TerraformApply.tfApply.FQDN'] ]
+  jobs:
+    - job: AnsibleRun
+      displayName: 'Run Ansible playbook'
+      steps:
+        - download: current
+          artifact: tf-outputs
+
+        - script: |
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ansible
+            ansible --version
+          displayName: 'Install Ansible'
+
+        - task: DownloadSecureFile@1
+          name: sshKey
+          displayName: 'Download SSH private key'
+          inputs:
+            secureFile: 'althea-ssh-key'   # à uploader dans Library -> Secure files
+
+        - script: |
+            chmod 600 $(sshKey.secureFilePath)
+
+            # Génération de l'inventaire à partir de l'output Terraform
+            mkdir -p $(ANSIBLE_WORKING_DIR)
+            cat > $(ANSIBLE_WORKING_DIR)/inventory.ini <<EOF
+            [web]
+            $(FQDN) ansible_host=$(PUBLIC_IP) ansible_user=$(ADMIN_USERNAME) ansible_ssh_private_key_file=$(sshKey.secureFilePath)
+
+            [web:vars]
+            ansible_python_interpreter=/usr/bin/python3
+            ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+            EOF
+
+            cat $(ANSIBLE_WORKING_DIR)/inventory.ini
+          displayName: 'Generate Ansible inventory from TF outputs'
+
+        - script: |
+            # Attente que le SSH soit disponible (cloud-init en cours)
+            for i in {1..30}; do
+              if nc -z -w 5 $(PUBLIC_IP) 22; then
+                echo "SSH OK sur $(PUBLIC_IP)"
+                break
+              fi
+              echo "Tentative $i/30 - SSH pas encore prêt..."
+              sleep 10
+            done
+          displayName: 'Wait for SSH'
+
+        - script: |
+            cd $(ANSIBLE_WORKING_DIR)
+            ansible-playbook -i inventory.ini playbook.yml -v
+          displayName: 'Run playbook'
+          env:
+            ANSIBLE_HOST_KEY_CHECKING: 'False'
+
+# =============================================================================
+# STAGE 6 - SMOKE TEST : valide que le service répond
+# =============================================================================
+- stage: SmokeTest
+  displayName: 'Smoke test'
+  dependsOn:
+    - Apply
+    - Configure
+  condition: succeeded()
+  variables:
+    URL: $[ stageDependencies.Apply.TerraformApply.outputs['TerraformApply.tfApply.URL'] ]
+  jobs:
+    - job: HttpSmoke
+      displayName: 'HTTP smoke test'
+      steps:
+        - script: |
+            echo "Test de $(URL)"
+            for i in {1..10}; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" $(URL) || echo "000")
+              echo "Tentative $i - HTTP $CODE"
+              if [ "$CODE" = "200" ]; then
+                echo "✅ Service up"
+                exit 0
+              fi
+              sleep 6
+            done
+            echo "❌ Service KO après 10 tentatives"
+            exit 1
+          displayName: 'curl smoke test'

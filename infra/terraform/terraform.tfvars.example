@@ -1,0 +1,12 @@
+project_name = "althea"
+environment  = "dev"
+location     = "francecentral"
+
+# Démarrage minimal (juste RG + ACR + Key Vault + Log Analytics) :
+enable_aks      = false
+enable_sql      = false
+enable_agent_vm = false
+
+# Pour activer la VM agent, fournir une clé SSH publique :
+# agent_vm_ssh_public_key   = "ssh-rsa AAAAB3Nz... user@host"
+# agent_vm_allowed_ssh_cidr = "VOTRE_IP_PUBLIQUE/32"

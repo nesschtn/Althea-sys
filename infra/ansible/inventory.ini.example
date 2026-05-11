@@ -1,0 +1,5 @@
+[agents]
+althea-agent ansible_host=REMPLACER_PAR_IP_PUBLIQUE ansible_user=azureuser ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+[agents:vars]
+ansible_python_interpreter=/usr/bin/python3

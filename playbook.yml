@@ -1,0 +1,96 @@
+---
+# =============================================================================
+# Playbook Althea-sys : configuration de la VM web (Ubuntu 24.04)
+# Cible : group [web] défini dans l'inventaire généré par le pipeline
+# =============================================================================
+
+- name: Configure Althea web server
+  hosts: web
+  become: true
+  gather_facts: true
+
+  vars:
+    project_name: althea-sys
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # Mise à jour APT et paquets de base
+    # -------------------------------------------------------------------------
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - ufw
+          - fail2ban
+          - unattended-upgrades
+        state: present
+
+    # -------------------------------------------------------------------------
+    # Durcissement minimal (UFW + fail2ban)
+    # -------------------------------------------------------------------------
+    - name: Configure UFW - default policies
+      community.general.ufw:
+        direction: '{{ item.direction }}'
+        policy: '{{ item.policy }}'
+      loop:
+        - { direction: incoming, policy: deny }
+        - { direction: outgoing, policy: allow }
+
+    - name: Allow SSH / HTTP / HTTPS via UFW
+      community.general.ufw:
+        rule: allow
+        port: '{{ item }}'
+        proto: tcp
+      loop:
+        - '22'
+        - '80'
+        - '443'
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+
+    - name: Enable fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: started
+        enabled: true
+
+    # -------------------------------------------------------------------------
+    # Nginx : page d'accueil basique
+    # -------------------------------------------------------------------------
+    - name: Deploy index page
+      ansible.builtin.copy:
+        dest: /var/www/html/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+        content: |
+          <!DOCTYPE html>
+          <html lang="fr">
+          <head>
+            <meta charset="UTF-8">
+            <title>{{ project_name }} - Dev</title>
+          </head>
+          <body style="font-family: sans-serif; text-align: center; padding: 4rem;">
+            <h1>{{ project_name }}</h1>
+            <p>VM provisionnée par Terraform, configurée par Ansible.</p>
+            <p>Host : {{ ansible_hostname }}</p>
+          </body>
+          </html>
+
+    - name: Ensure nginx is started and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
