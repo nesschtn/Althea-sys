@@ -22,19 +22,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout full repository (all refs)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          # Récupère également toutes les refs distantes pour un vrai mirror.
-          fetch-tags: true
-
-      - name: Fetch all branches and tags
+      - name: Clone bare repository from GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git fetch --prune --tags origin '+refs/heads/*:refs/heads/*'
-          git fetch --prune origin '+refs/tags/*:refs/tags/*' || true
+          # On clone en --mirror directement depuis GitHub : récupère toutes les refs
+          # (branches, tags) sans checkout d'arbre de travail. Pas de conflit possible.
+          git clone --mirror "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" repo.git
 
-      - name: Configure Azure DevOps remote
+      - name: Push mirror to Azure DevOps
         env:
           AZDO_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
           AZDO_REPO_URL: ${{ secrets.AZURE_DEVOPS_REPO_URL }}
@@ -48,19 +44,12 @@ jobs:
             exit 1
           fi
 
-          # Construit l'URL authentifiée. Le PAT est passé en mot de passe HTTP basic.
-          # Le username peut être vide pour Azure DevOps, mais on met "azdo" pour la lisibilité des logs.
+          cd repo.git
+
+          # Construit l'URL authentifiée. Le PAT est passé en HTTP Basic Auth.
           AUTH_URL="$(echo "${AZDO_REPO_URL}" | sed -E "s#https://#https://azdo:${AZDO_PAT}@#")"
 
-          git remote remove azure 2>/dev/null || true
           git remote add azure "${AUTH_URL}"
 
-      - name: Push mirror to Azure DevOps
-        run: |
-          # --mirror : pousse toutes les refs (branches, tags, notes) et propage les suppressions.
+          # --mirror : pousse toutes les refs (branches, tags) et propage les suppressions.
           git push --mirror azure
-
-      - name: Cleanup credentials
-        if: always()
-        run: |
-          git remote remove azure 2>/dev/null || true
