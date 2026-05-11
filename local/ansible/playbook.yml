@@ -18,3 +18,17 @@
     backend_port: 80
   roles:
     - nginx-proxy
+
+- name: Configure Prometheus
+  hosts: prometheus
+  gather_facts: false
+  connection: local
+  roles:
+    - prometheus
+
+- name: Configure Grafana (datasource + dashboard)
+  hosts: grafana
+  gather_facts: false
+  connection: local
+  roles:
+    - grafana

@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'nginx-web'
+    static_configs:
+      - targets: ['exporter-web:9113']
+        labels:
+          service: 'web-backend'
+          environment: 'dev'
+
+  - job_name: 'nginx-proxy'
+    static_configs:
+      - targets: ['exporter-proxy:9113']
+        labels:
+          service: 'reverse-proxy'
+          environment: 'dev'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          environment: 'dev'

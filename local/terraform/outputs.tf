@@ -1,16 +1,21 @@
-output "url" {
-  description = "URL d'acces au reverse proxy depuis l'hote"
+output "url_app" {
+  description = "URL d'acces a l'application (reverse proxy)"
   value       = "http://localhost:${var.proxy_external_port}"
 }
 
-output "proxy_container_name" {
-  description = "Nom du conteneur reverse proxy"
-  value       = docker_container.proxy.name
+output "url_prometheus" {
+  description = "URL de l'UI Prometheus"
+  value       = "http://localhost:${var.prometheus_external_port}"
 }
 
-output "web_container_name" {
-  description = "Nom du conteneur backend web"
-  value       = docker_container.web.name
+output "url_grafana" {
+  description = "URL de l'UI Grafana"
+  value       = "http://localhost:${var.grafana_external_port}"
+}
+
+output "grafana_credentials" {
+  description = "Login Grafana (admin user + valeur du mdp via terraform output -raw grafana_admin_password)"
+  value       = "User: ${var.grafana_admin_user} / Password: voir variables.tf (par defaut: althea-dev)"
 }
 
 output "network_name" {
@@ -18,8 +23,20 @@ output "network_name" {
   value       = docker_network.althea.name
 }
 
+output "containers" {
+  description = "Liste des conteneurs deployes"
+  value = [
+    docker_container.proxy.name,
+    docker_container.web.name,
+    docker_container.nginx_exporter_proxy.name,
+    docker_container.nginx_exporter_web.name,
+    docker_container.prometheus.name,
+    docker_container.grafana.name,
+  ]
+}
+
 output "ansible_inventory" {
-  description = "Inventaire Ansible pret a l'emploi"
+  description = "Inventaire Ansible (web + proxy + monitoring)"
   value = <<EOT
 [proxy]
 ${docker_container.proxy.name} ansible_connection=docker
@@ -27,8 +44,22 @@ ${docker_container.proxy.name} ansible_connection=docker
 [web]
 ${docker_container.web.name} ansible_connection=docker
 
-[althea:children]
+[prometheus]
+${docker_container.prometheus.name} ansible_connection=docker
+
+[grafana]
+${docker_container.grafana.name} ansible_connection=docker
+
+[nginx:children]
 proxy
 web
+
+[monitoring:children]
+prometheus
+grafana
+
+[althea:children]
+nginx
+monitoring
 EOT
 }

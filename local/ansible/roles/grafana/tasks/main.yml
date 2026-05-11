@@ -1,0 +1,66 @@
+---
+- name: Render Grafana datasource provisioning
+  delegate_to: localhost
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: /tmp/althea-grafana-datasource-{{ inventory_hostname }}.yml
+    mode: '0644'
+
+- name: Render Grafana dashboard provisioning config
+  delegate_to: localhost
+  ansible.builtin.template:
+    src: dashboard-provider.yml.j2
+    dest: /tmp/althea-grafana-dashprovider-{{ inventory_hostname }}.yml
+    mode: '0644'
+
+- name: Copy Grafana nginx dashboard JSON
+  delegate_to: localhost
+  ansible.builtin.copy:
+    src: nginx-dashboard.json
+    dest: /tmp/althea-grafana-dashboard-{{ inventory_hostname }}.json
+    mode: '0644'
+
+- name: Copy datasource config into Grafana container
+  delegate_to: localhost
+  community.docker.docker_container_copy_into:
+    container: "{{ inventory_hostname }}"
+    path: /tmp/althea-grafana-datasource-{{ inventory_hostname }}.yml
+    container_path: /etc/grafana/provisioning/datasources/prometheus.yml
+
+- name: Copy dashboard provider config into Grafana container
+  delegate_to: localhost
+  community.docker.docker_container_copy_into:
+    container: "{{ inventory_hostname }}"
+    path: /tmp/althea-grafana-dashprovider-{{ inventory_hostname }}.yml
+    container_path: /etc/grafana/provisioning/dashboards/default.yml
+
+- name: Create dashboards directory in Grafana container
+  delegate_to: localhost
+  community.docker.docker_container_exec:
+    container: "{{ inventory_hostname }}"
+    user: root
+    command: mkdir -p /var/lib/grafana/dashboards
+
+- name: Copy nginx dashboard JSON into Grafana container
+  delegate_to: localhost
+  community.docker.docker_container_copy_into:
+    container: "{{ inventory_hostname }}"
+    path: /tmp/althea-grafana-dashboard-{{ inventory_hostname }}.json
+    container_path: /var/lib/grafana/dashboards/nginx.json
+
+- name: Restart Grafana to load provisioning
+  delegate_to: localhost
+  community.docker.docker_container:
+    name: "{{ inventory_hostname }}"
+    state: started
+    restart: true
+
+- name: Cleanup temp files
+  delegate_to: localhost
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/althea-grafana-datasource-{{ inventory_hostname }}.yml
+    - /tmp/althea-grafana-dashprovider-{{ inventory_hostname }}.yml
+    - /tmp/althea-grafana-dashboard-{{ inventory_hostname }}.json

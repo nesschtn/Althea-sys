@@ -11,9 +11,34 @@ variable "environment" {
 }
 
 variable "proxy_external_port" {
-  description = "Port expose sur la machine hote pour acceder au reverse proxy"
+  description = "Port expose sur l'hote pour le reverse proxy"
   type        = number
   default     = 8080
+}
+
+variable "prometheus_external_port" {
+  description = "Port expose sur l'hote pour l'UI Prometheus"
+  type        = number
+  default     = 9090
+}
+
+variable "grafana_external_port" {
+  description = "Port expose sur l'hote pour Grafana"
+  type        = number
+  default     = 3000
+}
+
+variable "grafana_admin_user" {
+  description = "Utilisateur admin Grafana (login sur l'UI)"
+  type        = string
+  default     = "admin"
+}
+
+variable "grafana_admin_password" {
+  description = "Mot de passe admin Grafana - A CHANGER avant toute mise en ligne reelle"
+  type        = string
+  default     = "althea-dev"
+  sensitive   = true
 }
 
 variable "network_subnet" {
