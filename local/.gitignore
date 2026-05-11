@@ -1,0 +1,15 @@
+# Terraform - fichiers locaux à ne jamais committer
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# Ansible - généré dynamiquement
+ansible/inventory.ini
+*.retry
+
+# OS
+.DS_Store
+Thumbs.db

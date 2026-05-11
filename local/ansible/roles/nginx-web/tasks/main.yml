@@ -1,0 +1,43 @@
+---
+- name: Render index.html on host
+  delegate_to: localhost
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: /tmp/althea-index-{{ inventory_hostname }}.html
+    mode: '0644'
+
+- name: Render nginx default.conf on host
+  delegate_to: localhost
+  ansible.builtin.template:
+    src: default.conf.j2
+    dest: /tmp/althea-default-{{ inventory_hostname }}.conf
+    mode: '0644'
+
+- name: Copy index.html into container
+  delegate_to: localhost
+  community.docker.docker_container_copy_into:
+    container: "{{ inventory_hostname }}"
+    path: /tmp/althea-index-{{ inventory_hostname }}.html
+    container_path: /usr/share/nginx/html/index.html
+
+- name: Copy default.conf into container
+  delegate_to: localhost
+  community.docker.docker_container_copy_into:
+    container: "{{ inventory_hostname }}"
+    path: /tmp/althea-default-{{ inventory_hostname }}.conf
+    container_path: /etc/nginx/conf.d/default.conf
+
+- name: Reload nginx in container
+  delegate_to: localhost
+  community.docker.docker_container_exec:
+    container: "{{ inventory_hostname }}"
+    command: nginx -s reload
+
+- name: Cleanup temp files
+  delegate_to: localhost
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/althea-index-{{ inventory_hostname }}.html
+    - /tmp/althea-default-{{ inventory_hostname }}.conf

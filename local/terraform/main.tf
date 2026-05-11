@@ -1,12 +1,6 @@
-# =============================================================================
-# Althea-sys - Deploiement local Docker
-# Reverse proxy nginx + backend nginx, orchestres par Terraform
-# =============================================================================
-
 locals {
   base_name = "${var.project_name}-${var.environment}"
 
-  # Labels Docker (Terraform docker provider attend une liste d'objets)
   common_labels = [
     for k, v in var.labels : {
       label = k
@@ -15,9 +9,6 @@ locals {
   ]
 }
 
-# -----------------------------------------------------------------------------
-# Reseau Docker dedie : isolation des conteneurs du projet
-# -----------------------------------------------------------------------------
 resource "docker_network" "althea" {
   name   = "${local.base_name}-network"
   driver = "bridge"
@@ -35,29 +26,19 @@ resource "docker_network" "althea" {
   }
 }
 
-# -----------------------------------------------------------------------------
-# Image nginx (pullee une fois, reutilisee par les 2 conteneurs)
-# -----------------------------------------------------------------------------
 resource "docker_image" "nginx" {
   name         = "nginx:1.27-alpine"
   keep_locally = true
 }
 
-# -----------------------------------------------------------------------------
-# Conteneur backend web - sert la page HTML d'Althea
-# -----------------------------------------------------------------------------
 resource "docker_container" "web" {
   name  = "${local.base_name}-web"
   image = docker_image.nginx.image_id
 
   networks_advanced {
-    name = docker_network.althea.name
-    # Alias DNS interne : le proxy pourra l'atteindre via "web"
+    name    = docker_network.althea.name
     aliases = ["web"]
   }
-
-  # Pas de port expose vers l'hote : on passe forcement par le proxy
-  # (defense en profondeur : le backend n'est pas accessible directement)
 
   restart = "unless-stopped"
 
@@ -83,9 +64,6 @@ resource "docker_container" "web" {
   }
 }
 
-# -----------------------------------------------------------------------------
-# Conteneur reverse proxy - point d'entree HTTP, expose sur l'hote
-# -----------------------------------------------------------------------------
 resource "docker_container" "proxy" {
   name  = "${local.base_name}-proxy"
   image = docker_image.nginx.image_id

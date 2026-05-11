@@ -19,7 +19,7 @@ output "network_name" {
 }
 
 output "ansible_inventory" {
-  description = "Inventaire Ansible pret a l'emploi (a sauvegarder dans inventory.ini)"
+  description = "Inventaire Ansible pret a l'emploi"
   value = <<EOT
 [proxy]
 ${docker_container.proxy.name} ansible_connection=docker

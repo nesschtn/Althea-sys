@@ -1,0 +1,20 @@
+---
+- name: Configure backend web container
+  hosts: web
+  gather_facts: false
+  connection: local
+  vars:
+    project_name: althea-sys
+    environment_name: dev
+  roles:
+    - nginx-web
+
+- name: Configure reverse proxy container
+  hosts: proxy
+  gather_facts: false
+  connection: local
+  vars:
+    backend_host: web
+    backend_port: 80
+  roles:
+    - nginx-proxy

@@ -1,0 +1,26 @@
+---
+- name: Render proxy nginx config on host
+  delegate_to: localhost
+  ansible.builtin.template:
+    src: proxy.conf.j2
+    dest: /tmp/althea-proxy-{{ inventory_hostname }}.conf
+    mode: '0644'
+
+- name: Copy proxy config into container
+  delegate_to: localhost
+  community.docker.docker_container_copy_into:
+    container: "{{ inventory_hostname }}"
+    path: /tmp/althea-proxy-{{ inventory_hostname }}.conf
+    container_path: /etc/nginx/conf.d/default.conf
+
+- name: Reload nginx in proxy container
+  delegate_to: localhost
+  community.docker.docker_container_exec:
+    container: "{{ inventory_hostname }}"
+    command: nginx -s reload
+
+- name: Cleanup temp file
+  delegate_to: localhost
+  ansible.builtin.file:
+    path: /tmp/althea-proxy-{{ inventory_hostname }}.conf
+    state: absent

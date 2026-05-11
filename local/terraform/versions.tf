@@ -9,9 +9,6 @@ terraform {
   }
 }
 
-# Provider Docker.
-# Sur WSL avec Docker Desktop, le socket est expose via /var/run/docker.sock.
-# Si tu utilises Docker installe directement dans WSL, c'est le meme chemin.
 provider "docker" {
   host = "unix:///var/run/docker.sock"
 }

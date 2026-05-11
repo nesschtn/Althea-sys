@@ -23,7 +23,7 @@ variable "network_subnet" {
 }
 
 variable "labels" {
-  description = "Labels appliques a toutes les ressources (tracabilite)"
+  description = "Labels appliques a toutes les ressources"
   type        = map(string)
   default = {
     project     = "althea-sys"
