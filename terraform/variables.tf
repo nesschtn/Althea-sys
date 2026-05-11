@@ -12,7 +12,7 @@ variable "project_name" {
 variable "location" {
   description = "Région Azure"
   type        = string
-  default     = "francecentral"
+  default     = "germanywestcentral"
 }
 
 variable "vm_size" {

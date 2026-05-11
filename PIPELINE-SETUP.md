@@ -20,8 +20,8 @@ Ce pipeline déploie l'infrastructure et configure la VM web du projet Althea-sy
 Crée le storage account qui stockera l'état Terraform. Depuis Cloud Shell ou local :
 
 ```bash
-az group create -n rg-tfstate-althea -l francecentral
-az storage account create -g rg-tfstate-althea -n satfstatealtheaXXXXX -l francecentral --sku Standard_LRS
+az group create -n rg-tfstate-althea -l germanywestcentral
+az storage account create -g rg-tfstate-althea -n satfstatealtheaXXXXX -l germanywestcentral --sku Standard_LRS
 az storage container create --account-name satfstatealtheaXXXXX -n tfstate
 ```
 

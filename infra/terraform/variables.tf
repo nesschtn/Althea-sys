@@ -11,9 +11,9 @@ variable "environment" {
 }
 
 variable "location" {
+  description = "Région Azure"
   type        = string
-  default     = "francecentral"
-  description = "Région Azure."
+  default     = "germanywestcentral"
 }
 
 variable "enable_aks" {

@@ -8,7 +8,7 @@
 #>
 
 param(
-  [string]$Location          = "francecentral",
+  [string]$Location          = "germanywestcentral",
   [string]$ResourceGroupName = "rg-tfstate-projet-etude",
   [string]$StorageAccountName = "tfstateprojetetude$((Get-Random -Maximum 9999).ToString('0000'))",
   [string]$ContainerName     = "tfstate"
