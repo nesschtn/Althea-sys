@@ -1,0 +1,66 @@
+name: Mirror to Azure DevOps
+
+# Déclenche le miroir sur tout push de branche et tout push de tag.
+# Les suppressions de branches/tags sont également propagées (comportement `--mirror`).
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
+  delete:
+  workflow_dispatch:
+
+# Une seule exécution à la fois pour éviter les push concurrents qui se chevauchent.
+concurrency:
+  group: mirror-to-azure-devops
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Push mirror to Azure Repos
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full repository (all refs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Récupère également toutes les refs distantes pour un vrai mirror.
+          fetch-tags: true
+
+      - name: Fetch all branches and tags
+        run: |
+          git fetch --prune --tags origin '+refs/heads/*:refs/heads/*'
+          git fetch --prune origin '+refs/tags/*:refs/tags/*' || true
+
+      - name: Configure Azure DevOps remote
+        env:
+          AZDO_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+          AZDO_REPO_URL: ${{ secrets.AZURE_DEVOPS_REPO_URL }}
+        run: |
+          if [ -z "${AZDO_PAT}" ]; then
+            echo "::error::Le secret AZURE_DEVOPS_PAT est vide ou manquant."
+            exit 1
+          fi
+          if [ -z "${AZDO_REPO_URL}" ]; then
+            echo "::error::Le secret AZURE_DEVOPS_REPO_URL est vide ou manquant."
+            exit 1
+          fi
+
+          # Construit l'URL authentifiée. Le PAT est passé en mot de passe HTTP basic.
+          # Le username peut être vide pour Azure DevOps, mais on met "azdo" pour la lisibilité des logs.
+          AUTH_URL="$(echo "${AZDO_REPO_URL}" | sed -E "s#https://#https://azdo:${AZDO_PAT}@#")"
+
+          git remote remove azure 2>/dev/null || true
+          git remote add azure "${AUTH_URL}"
+
+      - name: Push mirror to Azure DevOps
+        run: |
+          # --mirror : pousse toutes les refs (branches, tags, notes) et propage les suppressions.
+          git push --mirror azure
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          git remote remove azure 2>/dev/null || true
