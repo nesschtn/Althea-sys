@@ -1,0 +1,10 @@
+project_name   = "projet-etude"
+location       = "francecentral"
+vm_size        = "Standard_B1s"
+admin_username = "azureadmin"
+
+# Coller le contenu de votre clé publique (cat ~/.ssh/azure_etude.pub)
+ssh_public_key = "ssh-ed25519 AAAA... votre-cle-ici"
+
+# Restreindre à votre IP publique en prod (ex: "82.123.45.67/32")
+allowed_ssh_cidr = "0.0.0.0/0"

@@ -1,0 +1,61 @@
+#cloud-config
+package_update: true
+package_upgrade: false
+
+packages:
+  - nginx
+
+write_files:
+  - path: /var/www/html/index.html
+    owner: www-data:www-data
+    permissions: '0644'
+    content: |
+      <!DOCTYPE html>
+      <html lang="fr">
+      <head>
+        <meta charset="UTF-8">
+        <title>${project_name} - Nginx Azure</title>
+        <style>
+          body { font-family: system-ui, sans-serif; max-width: 720px; margin: 4rem auto; padding: 0 1rem; color: #222; }
+          h1 { color: #006fc4; }
+          .meta { background: #f4f6f8; padding: 1rem; border-radius: 6px; }
+          code { background: #eee; padding: 2px 6px; border-radius: 3px; }
+        </style>
+      </head>
+      <body>
+        <h1>Projet d'etude - Deploiement reussi</h1>
+        <p>Ce serveur Nginx a ete deploye automatiquement via Terraform sur Microsoft Azure.</p>
+        <div class="meta">
+          <strong>Projet :</strong> ${project_name}<br>
+          <strong>Region :</strong> ${location}<br>
+          <strong>Taille VM :</strong> <code>${vm_size}</code><br>
+          <strong>Serveur :</strong> Nginx sur Ubuntu 24.04 LTS
+        </div>
+      </body>
+      </html>
+
+  - path: /etc/nginx/sites-available/default
+    owner: root:root
+    permissions: '0644'
+    content: |
+      server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+        root /var/www/html;
+        index index.html;
+        server_name _;
+
+        location / {
+          try_files $uri $uri/ =404;
+        }
+
+        location /health {
+          access_log off;
+          add_header Content-Type text/plain;
+          return 200 "ok\n";
+        }
+      }
+
+runcmd:
+  - systemctl enable nginx
+  - systemctl restart nginx

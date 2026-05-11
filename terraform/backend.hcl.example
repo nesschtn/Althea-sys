@@ -1,0 +1,4 @@
+resource_group_name  = "rg-tfstate-projet-etude"
+storage_account_name = "tfstateprojetetudeXXXX"
+container_name       = "tfstate"
+key                  = "projet-etude.tfstate"
