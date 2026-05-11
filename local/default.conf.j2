@@ -1,0 +1,21 @@
+server {
+    listen       80 default_server;
+    server_name  _;
+
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    # Securite : on retire l'entete revelant la version
+    server_tokens off;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # Endpoint healthcheck (utilise par le HEALTHCHECK Docker)
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+}
